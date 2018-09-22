@@ -83,7 +83,131 @@ void autopilot (void)
     
     
     if (scenario == 6){
+        //orbital re-entry
+        //unit vector along radius
+        vector3d e_r = position.norm();
+        //velocity along radius
+        vector3d v_r = e_r * (e_r * velocity);
+        //velocity along surface
+        vector3d v_t = velocity - v_r;
+        //cout<<v_r<<"    "<<v_t<<endl;
         
+        static double a,c,launch_velocity;
+        static double Kh, Kp, error, error2, h, Pout, delta, Kv, Kp2, Pout2;
+        
+        if (pilot_period == 0){
+            if (simulation_time == 0){
+                a  = (position.abs() + MARS_RADIUS) / 2.0;
+                c = a - MARS_RADIUS;
+                launch_velocity = sqrt((a-c)* GRAVITY * MARS_MASS / (a*(a+c)));
+            }
+            
+            error2 = -(launch_velocity - v_t.abs());
+            if (abs(error2)<=0.1){
+                pilot_period++;
+            }
+            Pout2  = Kp2 * error2;
+            Kp2 = 1;
+            double throttle1,throttle2;
+            
+            if (Pout2 >= 1){
+                throttle2 = 1;
+            }else if (Pout2<=0.0){
+                throttle2 = 0;
+            }else{
+                throttle2 = Pout2;
+            }
+            vector3d new_attitude = v_t.norm() * throttle2 * -1 + e_r * throttle1;
+            attitude_autochange(new_attitude);
+            throttle = throttle2;
+            
+            
+        }else if (pilot_period == 1){
+            //doing nothing
+            if (position.abs()<= (MARS_RADIUS * 1.01)){
+                pilot_period++;
+            }
+        }else if (pilot_period == 2){
+            //get altitude
+            h = position.abs() - MARS_RADIUS;
+            
+            //value setup
+            Kh = 0.1;
+            Kp = 0.5;
+            if (simulation_time == 0){
+                Kv = v_t.abs() / h;
+            }
+            
+            Kp2 = 1;
+            
+            
+            
+            //calculate error and Power
+            error = -(0.5 + Kh * h + e_r * velocity);
+            
+            Pout = Kp * error;
+            //cout<<(e_r * velocity)<<"   "<<(0.5 + Kh*h) <<endl;
+            //cout<<"ERROR: "<<error<<endl;
+            
+            //r3 is relative distance to the power of 3
+            double r3 = pow(position.abs(),3);
+            
+            //calculate gravitational force constant and mass
+            double constant = GRAVITY * MARS_MASS / r3;
+            double mass = UNLOADED_LANDER_MASS + fuel * FUEL_DENSITY * FUEL_CAPACITY;
+            
+            //calculate gravitational force at this time
+            double gravitational_force = mass * (position * constant * -1).abs();
+            
+            
+            //calculate error 2 and power
+            error2 = -(Kv * h - v_t.abs()+10);
+            Pout2  = Kp2 * error2;
+            //cout<<Pout<<"    "<<Pout2<<endl;
+            
+            
+            
+            
+            //setup delta value
+            delta = gravitational_force / MAX_THRUST;
+            
+            
+            
+            double throttle1,throttle2;
+            
+            //set thrust
+            if (delta > 1 || delta < 0){
+                cout<<"Delta value error: "<<delta<<endl;
+                return;
+            }
+            if (Pout<=-delta){
+                throttle1 = 0;
+            }else if (Pout >= (1-delta)){
+                throttle1 = 1;
+            }else{
+                throttle1 = Pout + delta;
+            }
+            
+            if (Pout2 >= 1){
+                throttle2 = 1;
+            }else if (Pout2<=0.1){
+                throttle2 = 0;
+            }else{
+                throttle2 = Pout2;
+            }
+            vector3d new_attitude = v_t.norm() * throttle2 * -1 + e_r * throttle1;
+            attitude_autochange(new_attitude);
+            double new_throttle = sqrt(pow(throttle1,2) + pow(throttle2,2));
+            if (new_throttle >= 1) {
+                throttle = 1;
+            }else{
+                throttle = new_throttle;
+            }
+            //when throttle set and speed is lowered, release the parachute
+            if (throttle>0 && velocity.abs()<=MAX_PARACHUTE_SPEED){
+                parachute_status = DEPLOYED;
+            }
+        }
         
         
     }
