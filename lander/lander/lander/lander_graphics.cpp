@@ -1971,9 +1971,17 @@ void glut_key (unsigned char k, int x, int y)
     // Escape or q or Q  - exit
     exit(0);
     break;
-      case 'r':case'R':
-          attitude_rotation(1);
-          break;
+          
+  case 'r':case'R':
+    //rotate aircraft to the right
+    attitude_rotation(1);
+    break;
+          
+  case 'e':case'E':
+    //rotate aircraft to the left
+    attitude_rotation(-1);
+    break;
+          
   case '0':
     // switch to scenario 0
     scenario = 0;
@@ -2188,6 +2196,7 @@ int main (int argc, char* argv[])
 }
 
 void attitude_rotation(double deg){
-    orientation.x = orientation.x + deg;
+    orientation.y = orientation.y + deg;
+    cout<<orientation<<endl;
     return;
 }
