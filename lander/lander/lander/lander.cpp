@@ -17,6 +17,12 @@
 bool integration_mode = MODE_VERLET; // 1 for Verlet integration, 0 for Euler integration. See definition in .h
 int pilot_period = 0; //variable to store pilot period
 
+//settings for scenario 1
+#define MODE_1_LANDING 0
+#define MODE_1_PRE_INJECTION 1
+#define MODE_1_INJECTION 2
+int action_mode = MODE_1_PRE_INJECTION;
+
 // settings for orbital injection
 // apogee > perigee
 double injection_orbit_apogee = (MARS_RADIUS + 17032000) * 1.3;
@@ -27,6 +33,10 @@ double injection_orbit_perigee = MARS_RADIUS + 17032000;
 #define STABLE_COUNT_CHECK 100
 
 
+//function definition
+void autopilot_orbital_injection();
+void autopilot_orbital_pre_injection(double to_height, double to_v_t, double to_v_r);
+
 void autopilot (void)
   // Autopilot to adjust the engine throttle, parachute and attitude control
 {
@@ -36,232 +46,59 @@ void autopilot (void)
         
     }
     if (scenario == 1){
-        //unit vector along radius
-        vector3d e_r = vector3d(0,-1,0);
+            //unit vector along radius
+            vector3d e_r = vector3d(0,-1,0);
+            
+            static double Kh, Kp, error, h, Pout, delta;
+            //get altitude
+            h = position.abs() - MARS_RADIUS;
+            
+            //value setup
+            Kh = 0.1;
+            Kp = 1;
+            
+            //calculate error and Power
+            error = -(0.5 + Kh * h + e_r * velocity);
+            Pout = Kp * error;
+            //cout<<(e_r * velocity)<<"   "<<(0.5 + Kh*h) <<endl;
+            //cout<<"ERROR: "<<error<<endl;
+            
+            //r3 is relative distance to the power of 3
+            double r3 = pow(position.abs(),3);
+            
+            //calculate gravitational force constant and mass
+            double constant = GRAVITY * MARS_MASS / r3;
+            double mass = UNLOADED_LANDER_MASS + fuel * FUEL_DENSITY * FUEL_CAPACITY;
+            
+            //calculate gravitational force at this time
+            double gravitational_force = mass * (position * constant * -1).abs();
+            
+            //setup delta value
+            delta = gravitational_force / MAX_THRUST;
+            //cout<<"Delta: "<<delta<<endl;
+            
+            //set thrust
+            if (delta > 1 || delta < 0){
+                cout<<"Delta value error: "<<delta<<endl;
+                return;
+            }
+            if (Pout<=-delta){
+                throttle = 0;
+            }else if (Pout >= (1-delta)){
+                throttle = 1;
+            }else{
+                throttle = Pout + delta;
+            }
+            
+            //when throttle set and speed is lowered, release the parachute
+            if (throttle>0 && velocity.abs()<=MAX_PARACHUTE_SPEED){
+                parachute_status = DEPLOYED;
+            }
+            cout<<throttle<<endl;
         
-        static double Kh, Kp, error, h, Pout, delta;
-        //get altitude
-        h = position.abs() - MARS_RADIUS;
-        
-        //value setup
-        Kh = 0.1;
-        Kp = 1;
-        
-        //calculate error and Power
-        error = -(0.5 + Kh * h + e_r * velocity);
-        Pout = Kp * error;
-        //cout<<(e_r * velocity)<<"   "<<(0.5 + Kh*h) <<endl;
-        //cout<<"ERROR: "<<error<<endl;
-        
-        //r3 is relative distance to the power of 3
-        double r3 = pow(position.abs(),3);
-        
-        //calculate gravitational force constant and mass
-        double constant = GRAVITY * MARS_MASS / r3;
-        double mass = UNLOADED_LANDER_MASS + fuel * FUEL_DENSITY * FUEL_CAPACITY;
-        
-        //calculate gravitational force at this time
-        double gravitational_force = mass * (position * constant * -1).abs();
-        
-        //setup delta value
-        delta = gravitational_force / MAX_THRUST;
-        //cout<<"Delta: "<<delta<<endl;
-        
-        //set thrust
-        if (delta > 1 || delta < 0){
-            cout<<"Delta value error: "<<delta<<endl;
-            return;
-        }
-        if (Pout<=-delta){
-            throttle = 0;
-        }else if (Pout >= (1-delta)){
-            throttle = 1;
-        }else{
-            throttle = Pout + delta;
-        }
-        
-        //when throttle set and speed is lowered, release the parachute
-        if (throttle>0 && velocity.abs()<=MAX_PARACHUTE_SPEED){
-            parachute_status = DEPLOYED;
-        }
-        cout<<throttle<<endl;
     }
     if (scenario == 3){
-        //launch into orbit
-        //#define FUEL_RATE_AT_MAX_THRUST 0.0 // (l/s)
-        
-        double apogee = injection_orbit_apogee;
-        double perigee = injection_orbit_perigee;
-        //unit vector along radius
-        vector3d e_r = position.norm();
-        //velocity along radius
-        vector3d v_r = e_r * (e_r * velocity);
-        //velocity along surface
-        vector3d v_t = velocity - v_r;
-        
-        //r3 is relative distance to the power of 3
-        double r3 = pow(position.abs(),3);
-        // get current height
-        double h = position.abs() - MARS_RADIUS;
-        //calculate gravitational force constant and mass
-        double constant = GRAVITY * MARS_MASS / r3;
-        double mass = UNLOADED_LANDER_MASS + fuel * FUEL_DENSITY * FUEL_CAPACITY;
-        
-        //calculate gravitational force at this time
-        double gravitational_force = mass * (position * constant * -1).abs();
-        
-        if (pilot_period == -1 || pilot_period == 0){
-            // launch into orbit towards perigee
-            static double Kh_r;
-            double Kp_r, error_r, Pout_r;
-            static double Kh_t;
-            double Kp_t, error_t, Pout_t;
-            static double start_v_t;
-            
-            
-            if (pilot_period == -1){
-                // initialize
-                Kh_r = (v_r.abs() / EXOSPHERE) * 0.05;
-                start_v_t = sqrt(GRAVITY * MARS_MASS*(1 / (MARS_RADIUS + EXOSPHERE) - 1 / perigee) * 2 / (1 - pow(MARS_RADIUS + EXOSPHERE,2)/pow(perigee,2)));
-                //cout<<"set start v_t "<<start_v_t<<endl;
-                pilot_period++;
-            }
-            
-            //Pout along radius
-            Kp_r = 1.0;
-            error_r = Kh_r * (EXOSPHERE - h) - v_r.abs();\
-            Pout_r = Kp_r * error_r;
-            //setup delta value
-            float delta_r = gravitational_force / MAX_THRUST;
-            
-            //Pout parpendicular to radius
-            Kh_t = 1.0;
-            Kp_t = 1.0;
-            error_t = -1 * Kh_t * (v_t.abs() - start_v_t);
-            //cout<<"error t:"<<error_t<<endl;
-            Pout_t = Kp_t * error_t;
-            
-            double throttle1,throttle2;
-            
-            //set thrust
-            if (delta_r > 1 || delta_r < 0){
-                cout<<"Delta value error: "<<delta_r<<endl;
-                return;
-            }
-            if (Pout_r<=-delta_r){
-                throttle1 = 0;
-            }else if (Pout_r >= (1-delta_r)){
-                throttle1 = 1;
-            }else{
-                throttle1 = Pout_r + delta_r;
-            }
-            
-            if (Pout_t >= 1){
-                throttle2 = 1;
-            }else if (Pout_t<=0.1){
-                throttle2 = 0;
-            }else{
-                throttle2 = Pout_t;
-            }
-            
-            vector3d new_attitude = v_t.norm() * throttle2  + e_r * throttle1;
-            attitude_autochange(new_attitude);
-            double new_throttle = sqrt(pow(throttle1,2) + pow(throttle2,2));
-            if (new_throttle >= 1) {
-                throttle = 1;
-            }else{
-                throttle = new_throttle;
-            }
-            if (error_t < 1){
-                throttle = 0;
-                pilot_period++;
-            }
-            
-        }
-        if (pilot_period==1){
-            //doing nothing until reach perigee
-            if (perigee - position.abs() < 1000){
-                pilot_period++;
-            }
-        }
-        if (pilot_period==2 || pilot_period==3){
-            static int stable_count = 0;
-            static double Kh_r;
-            double Kp_r, error_r, Pout_r;
-            static double Kh_t;
-            double Kp_t, error_t, Pout_t;
-            static double end_v_t;
-            if (pilot_period == 2){
-                //initialize
-                Kh_r = abs(v_r.abs() / (perigee - position.abs()));
-                if (perigee == apogee){
-                    end_v_t = sqrt(GRAVITY * MARS_MASS / perigee);
-                }else{
-                    end_v_t = sqrt(GRAVITY * MARS_MASS*(1 / (perigee) - 1 / apogee) * 2 / (1 - pow(perigee,2)/pow(apogee,2)));
-                    cout<<"set end_v_t"<<end_v_t<<endl;
-                }
-                pilot_period++;
-            }
-            // Pout along radius
-            Kp_r = 1;
-            error_r = Kh_r * (perigee - position.abs()) - v_r * e_r;
-            cout<<"error r:"<<error_r<<endl;
-            Pout_r = Kp_r * error_r;
-            //setup delta value
-            double delta_r = gravitational_force / MAX_THRUST;
-            
-            //Pout parpendicular to radius
-            Kh_t = 1.0;
-            Kp_t = 1.0;
-            error_t = -1 * Kh_t * (v_t.abs() - end_v_t);
-            cout<<"error t:"<<error_t<<endl;
-            Pout_t = Kp_t * error_t;
-            
-            double throttle1,throttle2;
-            
-            //set thrust
-            if (delta_r > 1 || delta_r < 0){
-                cout<<"Delta value error: "<<delta_r<<endl;
-                return;
-            }
-            if (Pout_r<=-delta_r){
-                if (Pout_r <= -delta_r - 1){
-                    throttle1 = -1;
-                }else{
-                    throttle1 = (Pout_r + delta_r);
-                }
-            }else if (Pout_r >= (1-delta_r)){
-                throttle1 = 1;
-            }else{
-                throttle1 = Pout_r + delta_r;
-            }
-            
-            if (Pout_t >= 1){
-                throttle2 = 1;
-            }else if (Pout_t<=0.1){
-                throttle2 = 0;
-            }else{
-                throttle2 = Pout_t;
-            }
-            cout<<throttle1<< "===="<<throttle2<<endl;
-            vector3d new_attitude = v_t.norm() * throttle2  + e_r * throttle1;
-            attitude_autochange(new_attitude);
-            double new_throttle = sqrt(pow(throttle1,2) + pow(throttle2,2));
-            if (new_throttle >= 1) {
-                throttle = 1;
-            }else{
-                throttle = new_throttle;
-            }
-            if (abs(error_t) < 1 && abs(error_r) < 1){
-                stable_count++;
-                if (stable_count > STABLE_COUNT_CHECK){
-                    //release
-                    throttle = 0;
-                    pilot_period++;
-                }
-                
-            }
-        }
+        autopilot_orbital_injection();
     }
     
     
@@ -279,7 +116,7 @@ void autopilot (void)
         static double a,c,launch_velocity;
         static double Kh, Kp, error, error2, h, Pout, delta, Kv, Kp2, Pout2;
         
-        if (pilot_period == 0){
+        if (pilot_period == -1){
             if (simulation_time == 0){
                 a  = (position.abs() + MARS_RADIUS) / 2.0;
                 c = a - MARS_RADIUS;
@@ -292,7 +129,7 @@ void autopilot (void)
             }
             Pout2  = Kp2 * error2;
             Kp2 = 1;
-            double throttle1,throttle2;
+            double throttle2;
             
             if (Pout2 >= 1){
                 throttle2 = 1;
@@ -301,16 +138,16 @@ void autopilot (void)
             }else{
                 throttle2 = Pout2;
             }
-            vector3d new_attitude = v_t.norm() * throttle2 * -1 + e_r * throttle1;
+            vector3d new_attitude = v_t.norm() * -1;
             attitude_autochange(new_attitude);
             throttle = throttle2;
             
-        }else if (pilot_period == 1){
+        }else if (pilot_period == 0){
             //doing nothing
             if (position.abs()<= (MARS_RADIUS * 1.01)){
                 pilot_period++;
             }
-        }else if (pilot_period == 2){
+        }else if (pilot_period == 1){
             //get altitude
             h = position.abs() - MARS_RADIUS;
             
@@ -394,6 +231,15 @@ void autopilot (void)
         
         
     }
+    if (scenario==7){
+        if (action_mode==MODE_1_PRE_INJECTION){
+            double perigee = injection_orbit_perigee;
+            double to_v_t = sqrt(GRAVITY * MARS_MASS*(1 / (MARS_RADIUS + EXOSPHERE) - 1 / perigee) * 2 / (1 - pow(MARS_RADIUS + EXOSPHERE,2)/pow(perigee,2)))/2;
+            autopilot_orbital_pre_injection((EXOSPHERE+(position.abs()-MARS_RADIUS))/2, to_v_t, 2000);
+        }else if(action_mode==MODE_1_INJECTION){
+            autopilot_orbital_injection();
+        }
+    }
 }
 
 vector3d getAcceleration (vector3d pureAcceleration)
@@ -424,7 +270,283 @@ vector3d getAcceleration (vector3d pureAcceleration)
     vector3d new_acceleration = pureAcceleration + thr / mass + aero_drag / mass;
     return new_acceleration;
 }
-
+void autopilot_orbital_pre_injection(double to_height, double to_v_t, double to_v_r){
+    //speed up aircraft
+    //unit vector along radius
+    vector3d e_r = position.norm();
+    //velocity along radius
+    vector3d v_r = e_r * (e_r * velocity);
+    //velocity along surface
+    vector3d v_t = velocity - v_r;
+    
+    //r3 is relative distance to the power of 3
+    double r3 = pow(position.abs(),3);
+    // get current height
+    double h = position.abs() - MARS_RADIUS;
+    //calculate gravitational force constant and mass
+    double constant = GRAVITY * MARS_MASS / r3;
+    double mass = UNLOADED_LANDER_MASS + fuel * FUEL_DENSITY * FUEL_CAPACITY;
+    
+    //calculate gravitational force at this time
+    double gravitational_force = mass * (position * constant * -1).abs();
+    // launch into orbit towards perigee
+    static double Kh_r;
+    double Kp_r, error_r, Pout_r;
+    static double Kh_t;
+    double Kp_t, error_t, Pout_t;
+    static double start_v_t, start_v_r, start_height;
+    
+    
+    if (pilot_period == -1){
+        // initialize
+        start_height = to_height;
+        start_v_r = to_v_r;
+        start_v_t = to_v_t;
+        cout<<"settings:"<<start_height<<endl<<start_v_r<<endl<<start_v_t<<endl;
+        Kh_r = (start_v_r - v_r.abs() / to_height - h);
+        //cout<<"set start v_t "<<start_v_t<<endl;
+        pilot_period++;
+    }
+    
+    //Pout along radius
+    Kp_r = 1.0;
+    error_r = Kh_r * (h - start_height) - v_r * e_r;
+    cout<<"error r:"<<error_r<<endl;
+    Pout_r = Kp_r * error_r;
+    //setup delta value
+    float delta_r = gravitational_force / MAX_THRUST;
+    
+    //Pout parpendicular to radius
+    Kh_t = 1.0;
+    Kp_t = 1.0;
+    error_t = -1 * Kh_t * (v_t.abs() - start_v_t);
+    cout<<"error t:"<<error_t<<endl;
+    Pout_t = Kp_t * error_t;
+    
+    double throttle1,throttle2;
+    
+    //set thrust
+    
+    if (delta_r > 1 || delta_r < 0){
+        cout<<"Delta value error: "<<delta_r<<endl;
+        return;
+    }
+    if (Pout_r<=-delta_r){
+        throttle1 = 0;
+    }else if (Pout_r >= (1-delta_r)){
+        throttle1 = 1;
+    }else{
+        throttle1 = Pout_r + delta_r;
+    }
+    
+    if (Pout_t >= 1){
+        throttle2 = 1;
+    }else if (Pout_t<=0.1){
+        throttle2 = 0;
+    }else{
+        throttle2 = Pout_t;
+    }
+    cout<<v_t.norm()<<endl;
+    vector3d new_attitude = v_t.norm() * throttle2  + e_r * throttle1;
+    attitude_autochange(new_attitude);
+    double new_throttle = sqrt(pow(throttle1,2) + pow(throttle2,2));
+    if (new_throttle >= 1) {
+        throttle = 1;
+    }else{
+        throttle = new_throttle;
+    }
+    if (abs(error_t) < 1){
+        pilot_period = -1;
+        action_mode = MODE_1_INJECTION;
+    }
+}
+void autopilot_orbital_injection(){
+    
+    //launch into orbit
+    //#define FUEL_RATE_AT_MAX_THRUST 0.0 // (l/s)
+    
+    double apogee = injection_orbit_apogee;
+    double perigee = injection_orbit_perigee;
+    //unit vector along radius
+    vector3d e_r = position.norm();
+    //velocity along radius
+    vector3d v_r = e_r * (e_r * velocity);
+    //velocity along surface
+    vector3d v_t = velocity - v_r;
+    
+    //r3 is relative distance to the power of 3
+    double r3 = pow(position.abs(),3);
+    // get current height
+    double h = position.abs() - MARS_RADIUS;
+    //calculate gravitational force constant and mass
+    double constant = GRAVITY * MARS_MASS / r3;
+    double mass = UNLOADED_LANDER_MASS + fuel * FUEL_DENSITY * FUEL_CAPACITY;
+    
+    //calculate gravitational force at this time
+    double gravitational_force = mass * (position * constant * -1).abs();
+    
+    if (pilot_period == -1 || pilot_period == 0){
+        // launch into orbit towards perigee
+        static double Kh_r;
+        double Kp_r, error_r, Pout_r;
+        static double Kh_t;
+        double Kp_t, error_t, Pout_t;
+        static double start_v_t;
+        
+        
+        if (pilot_period == -1){
+            // initialize
+            Kh_r = (v_r.abs() / EXOSPHERE);
+            start_v_t = sqrt(GRAVITY * MARS_MASS*(1 / (MARS_RADIUS + EXOSPHERE) - 1 / perigee) * 2 / (1 - pow(MARS_RADIUS + EXOSPHERE,2)/pow(perigee,2)));
+            cout<<"set start v_t "<<start_v_t<<endl;
+            pilot_period++;
+        }
+        
+        //Pout along radius
+        Kp_r = 1.0;
+        error_r = Kh_r * (EXOSPHERE - h) - v_r * e_r;
+        cout<<"v_r.abs():"<<v_r * e_r<<"   "<<Kh_r * (EXOSPHERE - h)<<endl;
+        cout<<"error r:"<<error_r<<endl;
+        Pout_r = Kp_r * error_r;
+        //setup delta value
+        float delta_r = gravitational_force / MAX_THRUST;
+        
+        //Pout parpendicular to radius
+        Kh_t = 1.0;
+        Kp_t = 1.0;
+        error_t = -1 * Kh_t * (v_t.abs() - start_v_t);
+        cout<<"v_t.abs():"<<v_t.abs()<<"   "<<start_v_t<<endl;
+        cout<<"error t:"<<error_t<<endl;
+        Pout_t = Kp_t * error_t;
+        
+        double throttle1,throttle2;
+        
+        //set thrust
+        if (delta_r > 1 || delta_r < 0){
+            cout<<"Delta value error: "<<delta_r<<endl;
+            return;
+        }
+        if (Pout_r<=-delta_r){
+            if (Pout_r <= -delta_r - 1){
+                throttle1 = -1;
+            }else{
+                throttle1 = (Pout_r + delta_r);
+            }
+        }else if (Pout_r >= (1-delta_r)){
+            throttle1 = 1;
+        }else{
+            throttle1 = Pout_r + delta_r;
+        }
+        
+        if (Pout_t >= 1){
+            throttle2 = 1;
+        }else if (Pout_t<=0.1){
+            throttle2 = 0;
+        }else{
+            throttle2 = Pout_t;
+        }
+        
+        vector3d new_attitude = v_t.norm() * throttle2  + e_r * throttle1;
+        attitude_autochange(new_attitude);
+        double new_throttle = sqrt(pow(throttle1,2) + pow(throttle2,2));
+        if (new_throttle >= 1) {
+            throttle = 1;
+        }else{
+            throttle = new_throttle;
+        }
+        if (error_t < 1 && (v_r.abs())<10 && (EXOSPHERE - h) < 100){
+            cout<<"final:"<<v_r.abs()<<"||"<<v_t.abs()<<"||"<<h<<endl;
+            throttle = 0;
+            pilot_period++;
+        }
+        
+    }
+    if (pilot_period==1){
+        //doing nothing until reach perigee
+        cout<<perigee - position.abs()<<endl;
+        if (perigee - position.abs() < 100000){
+            pilot_period++;
+        }
+    }
+    if (pilot_period==2 || pilot_period==3){
+        static int stable_count = 0;
+        static double Kh_r;
+        double Kp_r, error_r, Pout_r;
+        static double Kh_t;
+        double Kp_t, error_t, Pout_t;
+        static double end_v_t;
+        if (pilot_period == 2){
+            //initialize
+            Kh_r = abs(v_r.abs() / (perigee - position.abs()));
+            if (perigee == apogee){
+                end_v_t = sqrt(GRAVITY * MARS_MASS / perigee);
+            }else{
+                end_v_t = sqrt(GRAVITY * MARS_MASS*(1 / (perigee) - 1 / apogee) * 2 / (1 - pow(perigee,2)/pow(apogee,2)));
+                cout<<"set end_v_t"<<end_v_t<<endl;
+            }
+            pilot_period++;
+        }
+        // Pout along radius
+        Kp_r = 1;
+        error_r = Kh_r * (perigee - position.abs()) - v_r * e_r;
+        cout<<"error r:"<<error_r<<endl;
+        Pout_r = Kp_r * error_r;
+        //setup delta value
+        double delta_r = gravitational_force / MAX_THRUST;
+        
+        //Pout parpendicular to radius
+        Kh_t = 1.0;
+        Kp_t = 1.0;
+        error_t = -1 * Kh_t * (v_t.abs() - end_v_t);
+        cout<<"error t:"<<error_t<<endl;
+        Pout_t = Kp_t * error_t;
+        
+        double throttle1,throttle2;
+        
+        //set thrust
+        if (delta_r > 1 || delta_r < 0){
+            cout<<"Delta value error: "<<delta_r<<endl;
+            return;
+        }
+        if (Pout_r<=-delta_r){
+            if (Pout_r <= -delta_r - 1){
+                throttle1 = -1;
+            }else{
+                throttle1 = (Pout_r + delta_r);
+            }
+        }else if (Pout_r >= (1-delta_r)){
+            throttle1 = 1;
+        }else{
+            throttle1 = Pout_r + delta_r;
+        }
+        
+        if (Pout_t >= 1){
+            throttle2 = 1;
+        }else if (Pout_t<=0.1){
+            throttle2 = 0;
+        }else{
+            throttle2 = Pout_t;
+        }
+        cout<<throttle1<< "===="<<throttle2<<endl;
+        vector3d new_attitude = v_t.norm() * throttle2  + e_r * throttle1;
+        attitude_autochange(new_attitude);
+        double new_throttle = sqrt(pow(throttle1,2) + pow(throttle2,2));
+        if (new_throttle >= 1) {
+            throttle = 1;
+        }else{
+            throttle = new_throttle;
+        }
+        if (abs(error_t) < 1 && abs(error_r) < 1){
+            stable_count++;
+            if (stable_count > STABLE_COUNT_CHECK){
+                //release
+                throttle = 0;
+                pilot_period++;
+            }
+            
+        }
+    }
+}
 void numerical_dynamics (void)
   // This is the function that performs the numerical integration to update the
   // lander's pose. The time step is delta_t (global variable).
@@ -591,11 +713,18 @@ void initialize_simulation (void)
           parachute_status = NOT_DEPLOYED;
           stabilized_attitude = false;
           autopilot_enabled = true;
-          pilot_period = 0;
     break;
 
   case 7:
-    break;
+          // a descent from rest at 10km altitude, launch into orbit
+          position = vector3d(0.0, -(MARS_RADIUS + 10000.0), 0.0);
+          velocity = vector3d(0.0, 0.0, 0.0);
+          orientation = vector3d(0.0, 0.0, 90.0);
+          delta_t = 0.1;
+          parachute_status = NOT_DEPLOYED;
+          stabilized_attitude = false;
+          autopilot_enabled = true;
+          break;
 
   case 8:
     break;
