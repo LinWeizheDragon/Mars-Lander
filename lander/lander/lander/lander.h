@@ -86,6 +86,15 @@
 
 #define MODE_VERLET 1
 #define MODE_EULER 0
+#define pi 3.1415926
+
+// Wind Flow Constant
+#define WIND_FLOW_SPEED 1 // wind flow speed on ground (m/s)
+// wind flow direction, two conponents of the direction vector
+// eg: (1, 1) points to north east.
+#define WIND_FLOW_DIRECTION_NORTH 1 //negative number indicates south
+#define WIND_FLOW_DIRECTION_EAST 1 //negative number indicates west
+#define WIND_FLOW_RANDOM_CONSTANT 1 //speed of additional random gusts (m/s)
 
 using namespace std;
 
@@ -253,3 +262,4 @@ void closeup_mouse_motion (int x, int y);
 void glut_special (int key, int x, int y);
 void glut_key (unsigned char k, int x, int y);
 void attitude_rotation(double deg);
+vector3d getRelativeVelocity(vector3d absolute_velocity);

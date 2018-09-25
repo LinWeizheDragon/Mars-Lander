@@ -21,6 +21,9 @@ int pilot_period = 0; //variable to store pilot period
 #define MODE_1_LANDING 0
 #define MODE_1_PRE_INJECTION 1
 #define MODE_1_INJECTION 2
+#define MODE_5_PRE_INJECTION 1
+#define MODE_5_INJECTION 2
+
 int action_mode = MODE_1_PRE_INJECTION;
 
 // settings for orbital injection
@@ -29,7 +32,7 @@ double injection_orbit_apogee = (MARS_RADIUS + 17032000) * 1.3;
 double injection_orbit_perigee = MARS_RADIUS + 17032000;
 
 //constant
-#define pi 3.1415926
+
 #define STABLE_COUNT_CHECK 100
 
 
@@ -42,81 +45,139 @@ void autopilot (void)
 {
   // INSERT YOUR CODE HERE
     if (scenario == 0){
-        throttle = 1;
-        
-    }
-    if (scenario == 1){
-            //unit vector along radius
-            vector3d e_r = vector3d(0,-1,0);
-            
-            static double Kh, Kp, error, h, Pout, delta;
-            //get altitude
-            h = position.abs() - MARS_RADIUS;
-            
-            //value setup
-            Kh = 0.1;
-            Kp = 1;
-            
-            //calculate error and Power
-            error = -(0.5 + Kh * h + e_r * velocity);
-            Pout = Kp * error;
-            //cout<<(e_r * velocity)<<"   "<<(0.5 + Kh*h) <<endl;
-            //cout<<"ERROR: "<<error<<endl;
-            
-            //r3 is relative distance to the power of 3
-            double r3 = pow(position.abs(),3);
-            
-            //calculate gravitational force constant and mass
-            double constant = GRAVITY * MARS_MASS / r3;
-            double mass = UNLOADED_LANDER_MASS + fuel * FUEL_DENSITY * FUEL_CAPACITY;
-            
-            //calculate gravitational force at this time
-            double gravitational_force = mass * (position * constant * -1).abs();
-            
-            //setup delta value
-            delta = gravitational_force / MAX_THRUST;
-            //cout<<"Delta: "<<delta<<endl;
-            
-            //set thrust
-            if (delta > 1 || delta < 0){
-                cout<<"Delta value error: "<<delta<<endl;
-                return;
-            }
-            if (Pout<=-delta){
-                throttle = 0;
-            }else if (Pout >= (1-delta)){
-                throttle = 1;
-            }else{
-                throttle = Pout + delta;
-            }
-            
-            //when throttle set and speed is lowered, release the parachute
-            if (throttle>0 && velocity.abs()<=MAX_PARACHUTE_SPEED){
-                parachute_status = DEPLOYED;
-            }
-            cout<<throttle<<endl;
-        
-    }
-    if (scenario == 3){
-        autopilot_orbital_injection();
-    }
-    
-    
-    if (scenario == 6){
-        //orbital re-entry
-        //#define FUEL_RATE_AT_MAX_THRUST 0.5 // (l/s)
         //unit vector along radius
         vector3d e_r = position.norm();
         //velocity along radius
         vector3d v_r = e_r * (e_r * velocity);
         //velocity along surface
         vector3d v_t = velocity - v_r;
-        //cout<<v_r<<"    "<<v_t<<endl;
+        cout<<"v_r"<<v_r<<endl<<"v_t"<<v_t<<endl;
+        
+    }
+    if (scenario == 1){
+        static double Kh, Kp, error, error2, h, Pout, delta, Kv, Kp2, Pout2;
+        
+        //get altitude
+        //unit vector along radius
+        vector3d e_r = position.norm();
+        //velocity along radius
+        vector3d v_r = e_r * (e_r * getRelativeVelocity(velocity));
+        //velocity along surface
+        vector3d v_t = getRelativeVelocity(velocity) - v_r;
+        h = position.abs() - MARS_RADIUS;
+        
+        //value setup
+        Kh = 0.1;
+        Kp = 0.5;
+        if (simulation_time == 0){
+            Kv = v_t.abs() / h;
+        }
+        
+        Kp2 = 1;
+        
+        
+        
+        //calculate error and Power
+        error = -(0.5 + Kh * h + e_r * getRelativeVelocity(velocity));
+        
+        Pout = Kp * error;
+        //cout<<(e_r * velocity)<<"   "<<(0.5 + Kh*h) <<endl;
+        //cout<<"ERROR: "<<error<<endl;
+        
+        //r3 is relative distance to the power of 3
+        double r3 = pow(position.abs(),3);
+        
+        //calculate gravitational force constant and mass
+        double constant = GRAVITY * MARS_MASS / r3;
+        double mass = UNLOADED_LANDER_MASS + fuel * FUEL_DENSITY * FUEL_CAPACITY;
+        
+        //calculate gravitational force at this time
+        double gravitational_force = mass * (position * constant * -1).abs();
+        
+        
+        //calculate error 2 and power
+        error2 = -(Kv * h - v_t.abs()+10);
+        Pout2  = Kp2 * error2;
+        //cout<<Pout<<"    "<<Pout2<<endl;
+        
+        
+        
+        
+        //setup delta value
+        delta = gravitational_force / MAX_THRUST;
+        
+        
+        
+        double throttle1,throttle2;
+        
+        //set thrust
+        if (delta > 1 || delta < 0){
+            cout<<"Delta value error: "<<delta<<endl;
+            return;
+        }
+        if (Pout<=-delta){
+            throttle1 = 0;
+        }else if (Pout >= (1-delta)){
+            throttle1 = 1;
+        }else{
+            throttle1 = Pout + delta;
+        }
+        
+        if (Pout2 >= 1){
+            throttle2 = 1;
+        }else if (Pout2<=0.1){
+            throttle2 = 0;
+        }else{
+            throttle2 = Pout2;
+        }
+        vector3d new_attitude = v_t.norm() * throttle2 * -1 + e_r * throttle1;
+        attitude_autochange(new_attitude);
+        double new_throttle = sqrt(pow(throttle1,2) + pow(throttle2,2));
+        if (new_throttle >= 1) {
+            throttle = 1;
+        }else{
+            throttle = new_throttle;
+        }
+        //when throttle set and speed is lowered, release the parachute
+        double drag;
+        drag = 0.5*DRAG_COEF_CHUTE*atmospheric_density(position)*5.0*2.0*LANDER_SIZE*2.0*LANDER_SIZE*velocity.abs2();
+        if (throttle>0 && velocity.abs()<MAX_PARACHUTE_SPEED ){
+            cout<<velocity.abs()<<endl;
+            parachute_status = DEPLOYED;
+        }
+        
+    }
+    if (scenario == 3){
+        autopilot_orbital_injection();
+    }
+    
+    if (scenario==5){
+        if (action_mode==MODE_5_PRE_INJECTION){
+            double perigee = injection_orbit_perigee;
+            double to_v_t = sqrt(GRAVITY * MARS_MASS*(1 / (MARS_RADIUS + EXOSPHERE) - 1 / perigee) * 2 / (1 - pow(MARS_RADIUS + EXOSPHERE,2)/pow(perigee,2)))/2;
+            autopilot_orbital_pre_injection((EXOSPHERE+(position.abs()-MARS_RADIUS))/2, to_v_t, 2000);
+        }else if(action_mode==MODE_5_INJECTION){
+            autopilot_orbital_injection();
+        }
+    }
+    
+    if (scenario == 6){
+        //orbital re-entry
+        //#define FUEL_RATE_AT_MAX_THRUST 0.5 // (l/s)
+        
         
         static double a,c,launch_velocity;
         static double Kh, Kp, error, error2, h, Pout, delta, Kv, Kp2, Pout2;
         
         if (pilot_period == -1){
+            //unit vector along radius
+            vector3d e_r = position.norm();
+            //velocity along radius
+            vector3d v_r = e_r * (e_r * velocity);
+            //velocity along surface
+            vector3d v_t = velocity - v_r;
+            //cout<<v_r<<"    "<<v_t<<endl;
+            
             if (simulation_time == 0){
                 a  = (position.abs() + MARS_RADIUS) / 2.0;
                 c = a - MARS_RADIUS;
@@ -144,11 +205,17 @@ void autopilot (void)
             
         }else if (pilot_period == 0){
             //doing nothing
-            if (position.abs()<= (MARS_RADIUS * 1.01)){
+            if (position.abs()<= (MARS_RADIUS * 1.005)){
                 pilot_period++;
             }
         }else if (pilot_period == 1){
             //get altitude
+            //unit vector along radius
+            vector3d e_r = position.norm();
+            //velocity along radius
+            vector3d v_r = e_r * (e_r * getRelativeVelocity(velocity));
+            //velocity along surface
+            vector3d v_t = getRelativeVelocity(velocity) - v_r;
             h = position.abs() - MARS_RADIUS;
             
             //value setup
@@ -163,7 +230,7 @@ void autopilot (void)
             
             
             //calculate error and Power
-            error = -(0.5 + Kh * h + e_r * velocity);
+            error = -(0.5 + Kh * h + e_r * getRelativeVelocity(velocity));
             
             Pout = Kp * error;
             //cout<<(e_r * velocity)<<"   "<<(0.5 + Kh*h) <<endl;
@@ -224,7 +291,10 @@ void autopilot (void)
                 throttle = new_throttle;
             }
             //when throttle set and speed is lowered, release the parachute
-            if (throttle>0 && velocity.abs()<=MAX_PARACHUTE_SPEED){
+            double drag;
+            drag = 0.5*DRAG_COEF_CHUTE*atmospheric_density(position)*5.0*2.0*LANDER_SIZE*2.0*LANDER_SIZE*velocity.abs2();
+            if (throttle>0 && velocity.abs()<MAX_PARACHUTE_SPEED ){
+                cout<<velocity.abs()<<endl;
                 parachute_status = DEPLOYED;
             }
         }
@@ -259,11 +329,14 @@ vector3d getAcceleration (vector3d pureAcceleration)
     //calculate the aerodynamic drag force
     vector3d aero_drag;
     double density = atmospheric_density(position);
-    aero_drag = velocity.norm() * -0.5 * density * DRAG_COEF_LANDER * pi * pow(LANDER_SIZE,2) * pow (velocity.abs(),2);
-    //cout<<aero_drag<<"     ";
+    vector3d relative_velocity = getRelativeVelocity(velocity);
+    
+    //use relative speed to calculate the drag forces
+    aero_drag = relative_velocity.norm() * -0.5 * density * DRAG_COEF_LANDER * pi * pow(LANDER_SIZE,2) * pow (relative_velocity.abs(),2);
+    
     //when parachute is deployed, add more drag force
     if (parachute_status == DEPLOYED){
-        aero_drag += velocity.norm() * -0.5 * density * DRAG_COEF_CHUTE * 5 * pow((LANDER_SIZE*2.0),2) * pow (velocity.abs(),2);
+        aero_drag += relative_velocity.norm() * -0.5 * density * DRAG_COEF_CHUTE * 5 * pow((LANDER_SIZE*2.0),2) * pow (relative_velocity.abs(),2);
     }
     //cout<<aero_drag<<endl;
     
@@ -630,7 +703,7 @@ void initialize_simulation (void)
   scenario_description[4] = "elliptical orbit that clips the atmosphere and decays";
   scenario_description[5] = "descent from 200km";
   scenario_description[6] = "orbital re-entry";
-  scenario_description[7] = "";
+  scenario_description[7] = "from rest at 10km altitude, launch into orbit";
   scenario_description[8] = "";
   scenario_description[9] = "";
     
@@ -647,7 +720,7 @@ void initialize_simulation (void)
     delta_t = 0.1;
     parachute_status = NOT_DEPLOYED;
     stabilized_attitude = false;
-    autopilot_enabled = false;
+    autopilot_enabled = true;
     break;
 
   case 1:
@@ -701,11 +774,12 @@ void initialize_simulation (void)
     orientation = vector3d(0.0, 0.0, 90.0);
     delta_t = 0.1;
     parachute_status = NOT_DEPLOYED;
-    stabilized_attitude = true;
-    autopilot_enabled = false;
+    stabilized_attitude = false;
+    autopilot_enabled = true;
     break;
 
   case 6:
+          //orbital re-entry
           position = vector3d(MARS_RADIUS + 17032000, 0.0, 0.0);
           velocity = vector3d(0.0, sqrt(GRAVITY * MARS_MASS / position.abs()),0.0);
           orientation = vector3d(0.0, 90.0, 0.0);

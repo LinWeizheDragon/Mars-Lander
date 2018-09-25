@@ -1507,10 +1507,10 @@ bool safe_to_deploy_parachute (void)
   double drag;
 
   // Assume high Reynolds number, quadratic drag = -0.5 * rho * v^2 * A * C_d
-  drag = 0.5*DRAG_COEF_CHUTE*atmospheric_density(position)*5.0*2.0*LANDER_SIZE*2.0*LANDER_SIZE*velocity_from_positions.abs2();
+  drag = 0.5*DRAG_COEF_CHUTE*atmospheric_density(position)*5.0*2.0*LANDER_SIZE*2.0*LANDER_SIZE*getRelativeVelocity(velocity_from_positions).abs2();
   // Do not use the global variable "altitude" here, in case this function is called from within the
   // numerical_dynamics function, before altitude is updated in the update_visualization function
-  if ((drag > MAX_PARACHUTE_DRAG) || ((velocity_from_positions.abs() > MAX_PARACHUTE_SPEED) && ((position.abs() - MARS_RADIUS) < EXOSPHERE))) return false;
+  if ((drag > MAX_PARACHUTE_DRAG) || ((getRelativeVelocity(velocity_from_positions).abs() > MAX_PARACHUTE_SPEED) && ((position.abs() - MARS_RADIUS) < EXOSPHERE))) return false;
   else return true;
 }
 
@@ -1530,7 +1530,7 @@ void update_visualization (void)
   if (delta_t != 0.0) velocity_from_positions = (position - last_position)/delta_t;
   else velocity_from_positions = vector3d(0.0, 0.0, 0.0);
   climb_speed = velocity_from_positions*av_p;
-  ground_speed = (velocity_from_positions - climb_speed*av_p).abs();
+  ground_speed = getRelativeVelocity((velocity_from_positions - climb_speed*av_p)).abs();
 
   // Check to see whether the lander has landed
   if (altitude < LANDER_SIZE/2.0) {
@@ -2199,4 +2199,28 @@ void attitude_rotation(double deg){
     orientation.y = orientation.y + deg;
     cout<<orientation<<endl;
     return;
+}
+vector3d getRelativeVelocity(vector3d absolute_velocity){
+    /*
+     get relative speed by absolute velocity
+     */
+    vector3d polar = vector3d(0.0,0.0,-1.0);
+    vector3d rotation_vector = position^polar;
+    rotation_vector = rotation_vector.norm();
+    vector3d self_rotation_velocity = rotation_vector * (2 * pi / MARS_DAY) * position.abs();
+    vector3d relative_velocity = absolute_velocity - self_rotation_velocity;
+    //To involve atmospheric wind flow
+    vector3d wind_flow_velocity = vector3d(0.0,0.0,0.0);
+    if (WIND_FLOW_SPEED!=0 || WIND_FLOW_RANDOM_CONSTANT!=0){
+        vector3d point_north = (rotation_vector^(position*-1)).norm();
+        vector3d point_east = rotation_vector;
+        vector3d wind_flow_direction = (point_north * WIND_FLOW_DIRECTION_NORTH + point_east * WIND_FLOW_DIRECTION_EAST).norm();
+        wind_flow_velocity = wind_flow_direction * position.abs() / (MARS_RADIUS) * WIND_FLOW_SPEED;
+        // random direction
+        int gust_north = rand() % 100;
+        int gust_east = rand() % 100;
+        vector3d gust_velocity = (point_north * gust_north + point_east * gust_east).norm() * WIND_FLOW_RANDOM_CONSTANT;
+        wind_flow_velocity += gust_velocity;
+    }
+    return (relative_velocity - wind_flow_velocity);
 }
