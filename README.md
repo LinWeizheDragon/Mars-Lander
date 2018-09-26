@@ -1,6 +1,6 @@
 # Mars-Lander
 **Please read through this documentation and setup the contants correctly when trying to test my autopilot.**
-
+**PLEASE DO REMEMBER to restart the program when you try to switch to another scenario just in case of any unexpected error**
 # Features
 ## Acceleration
 ### Using the following function to add drag force/wind flow/gusts to pure acceleration produced by gravitational force
