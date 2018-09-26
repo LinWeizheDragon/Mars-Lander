@@ -176,7 +176,6 @@ void autopilot (void)
             vector3d v_r = e_r * (e_r * velocity);
             //velocity along surface
             vector3d v_t = velocity - v_r;
-            //cout<<v_r<<"    "<<v_t<<endl;
             
             if (simulation_time == 0){
                 a  = (position.abs() + MARS_RADIUS) / 2.0;
@@ -233,8 +232,6 @@ void autopilot (void)
             error = -(0.5 + Kh * h + e_r * getRelativeVelocity(velocity));
             
             Pout = Kp * error;
-            //cout<<(e_r * velocity)<<"   "<<(0.5 + Kh*h) <<endl;
-            //cout<<"ERROR: "<<error<<endl;
             
             //r3 is relative distance to the power of 3
             double r3 = pow(position.abs(),3);
@@ -250,15 +247,10 @@ void autopilot (void)
             //calculate error 2 and power
             error2 = -(Kv * h - v_t.abs()+10);
             Pout2  = Kp2 * error2;
-            //cout<<Pout<<"    "<<Pout2<<endl;
-            
-            
             
             
             //setup delta value
             delta = gravitational_force / MAX_THRUST;
-            
-            
             
             double throttle1,throttle2;
             
@@ -471,15 +463,15 @@ void autopilot_orbital_injection(){
             // initialize
             Kh_r = (v_r.abs() / EXOSPHERE);
             start_v_t = sqrt(GRAVITY * MARS_MASS*(1 / (MARS_RADIUS + EXOSPHERE) - 1 / perigee) * 2 / (1 - pow(MARS_RADIUS + EXOSPHERE,2)/pow(perigee,2)));
-            cout<<"set start v_t "<<start_v_t<<endl;
+            //cout<<"set start v_t "<<start_v_t<<endl;
             pilot_period++;
         }
         
         //Pout along radius
         Kp_r = 1.0;
         error_r = Kh_r * (EXOSPHERE - h) - v_r * e_r;
-        cout<<"v_r.abs():"<<v_r * e_r<<"   "<<Kh_r * (EXOSPHERE - h)<<endl;
-        cout<<"error r:"<<error_r<<endl;
+        //cout<<"v_r.abs():"<<v_r * e_r<<"   "<<Kh_r * (EXOSPHERE - h)<<endl;
+        //cout<<"error r:"<<error_r<<endl;
         Pout_r = Kp_r * error_r;
         //setup delta value
         float delta_r = gravitational_force / MAX_THRUST;
@@ -488,8 +480,8 @@ void autopilot_orbital_injection(){
         Kh_t = 1.0;
         Kp_t = 1.0;
         error_t = -1 * Kh_t * (v_t.abs() - start_v_t);
-        cout<<"v_t.abs():"<<v_t.abs()<<"   "<<start_v_t<<endl;
-        cout<<"error t:"<<error_t<<endl;
+        //cout<<"v_t.abs():"<<v_t.abs()<<"   "<<start_v_t<<endl;
+        //cout<<"error t:"<<error_t<<endl;
         Pout_t = Kp_t * error_t;
         
         double throttle1,throttle2;
@@ -528,7 +520,7 @@ void autopilot_orbital_injection(){
             throttle = new_throttle;
         }
         if (error_t < 1 && (v_r.abs())<10 && (EXOSPHERE - h) < 100){
-            cout<<"final:"<<v_r.abs()<<"||"<<v_t.abs()<<"||"<<h<<endl;
+            //cout<<"final:"<<v_r.abs()<<"||"<<v_t.abs()<<"||"<<h<<endl;
             throttle = 0;
             pilot_period++;
         }
@@ -555,14 +547,14 @@ void autopilot_orbital_injection(){
                 end_v_t = sqrt(GRAVITY * MARS_MASS / perigee);
             }else{
                 end_v_t = sqrt(GRAVITY * MARS_MASS*(1 / (perigee) - 1 / apogee) * 2 / (1 - pow(perigee,2)/pow(apogee,2)));
-                cout<<"set end_v_t"<<end_v_t<<endl;
+                //cout<<"set end_v_t"<<end_v_t<<endl;
             }
             pilot_period++;
         }
         // Pout along radius
         Kp_r = 1;
         error_r = Kh_r * (perigee - position.abs()) - v_r * e_r;
-        cout<<"error r:"<<error_r<<endl;
+        //cout<<"error r:"<<error_r<<endl;
         Pout_r = Kp_r * error_r;
         //setup delta value
         double delta_r = gravitational_force / MAX_THRUST;
@@ -571,7 +563,7 @@ void autopilot_orbital_injection(){
         Kh_t = 1.0;
         Kp_t = 1.0;
         error_t = -1 * Kh_t * (v_t.abs() - end_v_t);
-        cout<<"error t:"<<error_t<<endl;
+        //cout<<"error t:"<<error_t<<endl;
         Pout_t = Kp_t * error_t;
         
         double throttle1,throttle2;
@@ -600,7 +592,7 @@ void autopilot_orbital_injection(){
         }else{
             throttle2 = Pout_t;
         }
-        cout<<throttle1<< "===="<<throttle2<<endl;
+        //cout<<throttle1<< "===="<<throttle2<<endl;
         vector3d new_attitude = v_t.norm() * throttle2  + e_r * throttle1;
         attitude_autochange(new_attitude);
         double new_throttle = sqrt(pow(throttle1,2) + pow(throttle2,2));
