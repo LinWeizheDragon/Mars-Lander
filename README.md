@@ -31,8 +31,15 @@ bool integration_mode = MODE_VERLET;
 # Basic Autopilot Concept
 ## Two-dimensional automatic control system
 Sometimes the aircraft needs to be speed up or slowed down to a specific velocity. However, it's not efficient at all to adjust the velocity in different dimensions one by one. So we need a two-dimensional automatic control system to adjust the velocity both vertically and horizontally at the same time.
+### Delta Setting
+When the error is small, the engine should provide a thrust which can cancel the effect of gravitational force. 
+(Only apply in vertical velocity control)
+```
+//setup delta value
+delta = gravitational_force / MAX_THRUST;
+```
 ### Throttle Setting and Attitude Change
-The following code enable us to change speed in two-dimension
+The following code enables us to change speed in two-dimension
 ```
 //set thrust
 if (delta_r > 1 || delta_r < 0){
@@ -69,6 +76,52 @@ if (new_throttle >= 1) {
     throttle = new_throttle;
 }
 ```
+### Bouncing
+Sometimes the aircraft will bounce around a specific velocity due to the overshoot of engine.
+The solution is to setup Kh and Kp properly.
+Lower down Kp can significantly eliminate the bouncing effect.
+
+### Error Reference Setting
+Currently according to the knowledge given by handout, we are using a linear reference for our control system:
+```
+error = -(TARGET_VELOCITY + Kh * h + e_r * getRelativeVelocity(velocity));
+Pout = Kp * error;
+```
+It's possible to apply a non-linear reference for the velocity.
+For example:
+```
+reference_velocity = Kh * pow((Height - Target_Height), 2)
+```
+It's possible to change the Kh by codes, which means the Kh value can fit in different scenarios.
+For example, when injecting my lander into orbit from below the atmosphere, I implemented this:
+```
+// initialize
+Kh_r = (v_r.abs() / EXOSPHERE);
+start_v_t = sqrt(GRAVITY * MARS_MASS*(1 / (MARS_RADIUS + EXOSPHERE) - 1 / perigee) * 2 / (1 - pow(MARS_RADIUS + EXOSPHERE,2)/pow(perigee,2)));
+cout<<"set start v_t "<<start_v_t<<endl;
+```
+Which initialize the Kh value dynamically and this injection function can fit into different injection tasks such as Scenario 7 (will be explained later).
+
+## Pilot Period
+It's definitely not efficient to activate engine all the time.
+Therefore I designed an autopilot queue, using which we can divide the whole task into a sequence of tasks.
+For example, in Scenario 7, when trying to inject the lander which is initailly in the air and with no speed, we need to speed up the lander, and then excute the injection.
+```
+if (action_mode==MODE_1_PRE_INJECTION){
+    double perigee = injection_orbit_perigee;
+    double to_v_t = sqrt(GRAVITY * MARS_MASS*(1 / (MARS_RADIUS + EXOSPHERE) - 1 / perigee) * 2 / (1 - pow(MARS_RADIUS + EXOSPHERE,2)/pow(perigee,2)))/2;
+    autopilot_orbital_pre_injection((EXOSPHERE+(position.abs()-MARS_RADIUS))/2, to_v_t, 2000);
+    
+}else if(action_mode==MODE_1_INJECTION){
+    autopilot_orbital_injection();
+}
+```
+For Scenario 3, the lander has an initial velocity, so we can excute injection directly.
+```
+autopilot_orbital_injection();
+```
+
+
 # Scenarios
 ## Scenario 1
 Please make sure:
@@ -78,7 +131,32 @@ Please make sure:
 ### With the autopilot
 The initial absolute velocity of the lander is zero but the ground speed is not due to the self rotation of the Mars. So we need a two-dimensional automatic control system to perform the landing
 The program analyzes the power needed to slow down the aircraft in two-dimension, and then automatically changes the attitude of the lander and launches the engine.
-(This is the core of landing/launc)
+(This is the application of my core autopilot concept)
+
+## Scenario 3
+Please make sure:
+```
+#define FUEL_RATE_AT_MAX_THRUST 0.0 // (l/s)
+```
+### Without auto pilot
+The lander can not resist the drag force and finally crashes.
+### With auto pilot
+```
+// settings for orbital injection
+// apogee > perigee
+double injection_orbit_apogee = (MARS_RADIUS + 17032000) * 1.3;
+double injection_orbit_perigee = MARS_RADIUS + 17032000;
+```
+**This is a very automatic system, which helps you inject the aircraft into almost "any" circular/ellipse orbit!**
+The lander will firstly reach the top of atmosphere (where drag doesn't affect our movement too much), and then speed up until a certain velocity.
+With this velocity, lander resists the gravitational force and reach the perigee.
+Once it reaches perigee, engine is activated again and speed up to higher velocity so that it can move between apogee and perigee we provided.
+## Scenario 5
+Please make sure:
+```
+#define FUEL_RATE_AT_MAX_THRUST 0.0 // (l/s)
+```
+This is similar to Scenario 7, using completely the same code.
 ## Scenario 6
 Please make sure:
 ```
@@ -94,6 +172,13 @@ Then the engine is started again, slow down the lander and release the parachute
 Safely landed.
 
 ## Scenario 7
+This scenario has the same initial settings with **Scenario 1** but has an autopilot to inject the lander to an orbit.
+Please make sure:
+```
+#define FUEL_RATE_AT_MAX_THRUST 0.0 // (l/s)
+```
+The lander will firstly excutes a pre-injection period, in which it will speed up and fly higher.
+Then it will excute the same approach in Scenario 3 and insert into the desired orbit.
 
 
 # Copyright
