@@ -28,7 +28,57 @@ lander.cpp:
 ```
 bool integration_mode = MODE_VERLET; 
 ```
+# Basic Autopilot Concept
+## Two-dimensional automatic control system
+Sometimes the aircraft needs to be speed up or slowed down to a specific velocity. However, it's not efficient at all to adjust the velocity in different dimensions one by one. So we need a two-dimensional automatic control system to adjust the velocity both vertically and horizontally at the same time.
+### Throttle Setting and Attitude Change
+The following code enable us to change speed in two-dimension
+```
+//set thrust
+if (delta_r > 1 || delta_r < 0){
+    cout<<"Delta value error: "<<delta_r<<endl;
+    return;
+}
+if (Pout_r<=-delta_r){
+    if (Pout_r <= -delta_r - 1){
+        throttle1 = -1;
+    }else{
+        throttle1 = (Pout_r + delta_r);
+    }
+}
+else if (Pout_r >= (1-delta_r)){
+    throttle1 = 1;
+}else{
+    throttle1 = Pout_r + delta_r;
+}
+
+if (Pout_t >= 1){
+    throttle2 = 1;
+}else if (Pout_t<=0.1){
+    throttle2 = 0;
+}else{
+    throttle2 = Pout_t;
+}
+
+vector3d new_attitude = v_t.norm() * throttle2  + e_r * throttle1;
+attitude_autochange(new_attitude);
+double new_throttle = sqrt(pow(throttle1,2) + pow(throttle2,2));
+if (new_throttle >= 1) {
+    throttle = 1;
+}else{
+    throttle = new_throttle;
+}
+```
 # Scenarios
+## Scenario 1
+Please make sure:
+```
+#define FUEL_RATE_AT_MAX_THRUST 0.5 // (l/s)
+```
+### With the autopilot
+The initial absolute velocity of the lander is zero but the ground speed is not due to the self rotation of the Mars. So we need a two-dimensional automatic control system to perform the landing
+The program analyzes the power needed to slow down the aircraft in two-dimension, and then automatically changes the attitude of the lander and launches the engine.
+(This is the core of landing/launc)
 ## Scenario 6
 Please make sure:
 ```
@@ -37,7 +87,14 @@ Please make sure:
 ### Without auto pilot
 The lander runs on an aerostationary orbit.
 ### With auto pilot
-The lander starts
+The lander starts to slow down by activating the engine and pushing in opposite direction of velocity. 
+After slowing down a specific speed, the engine is deactivated. 
+The lander will follow an eclipse orbit to approach the atmosphere by the effect of gravitational force.
+Then the engine is started again, slow down the lander and release the parachute.
+Safely landed.
+
+## Scenario 7
+
 
 # Copyright
 Lin Weizhe @2018
