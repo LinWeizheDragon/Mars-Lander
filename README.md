@@ -1,5 +1,5 @@
 # Mars-Lander
-My Mars lander
+**Please read through this documentation and setup the contants correctly when trying to test my autopilot.**
 
 # Features
 ## Acceleration
@@ -147,7 +147,8 @@ The lander can not resist the drag force and finally crashes.
 double injection_orbit_apogee = (MARS_RADIUS + 17032000) * 1.3;
 double injection_orbit_perigee = MARS_RADIUS + 17032000;
 ```
-**This is a very automatic system, which helps you inject the aircraft into almost "any" circular/ellipse orbit!**
+`**This is a very automatic system, which helps you inject the aircraft into almost "any" circular/ellipse orbit!**`
+
 The lander will firstly reach the top of atmosphere (where drag doesn't affect our movement too much), and then speed up until a certain velocity.
 With this velocity, lander resists the gravitational force and reach the perigee.
 Once it reaches perigee, engine is activated again and speed up to higher velocity so that it can move between apogee and perigee we provided.
@@ -179,6 +180,53 @@ Please make sure:
 ```
 The lander will firstly excutes a pre-injection period, in which it will speed up and fly higher.
 Then it will excute the same approach in Scenario 3 and insert into the desired orbit.
+
+# Tuning Autopilot
+## How to save fuel
+The concept is to increase the effiency of the thrust
+### Solution 1: Make use of drag force
+The drag force increases with speed, which means if we pass through the atmosphere with a higher speed, the drag force will produce more work to reduce the potential energy as well as the kinetic energy.
+Therefore, by tuning the Kh (likely to be lower), we can postpone the launch of engine and therefore provide a higher speed when moving downwards.
+### Solution 2: Make use of wind flow
+The drag force depends on the relative speed regarding the atmosphere while not the absolute speed in 3D space.
+Therefore when trying to land, if posible we can fly from east to west and when trying to launch we'd better launch towards east to reduce the effect of drag force.
+### Solution 3: Make use of parachute
+The drag force increases suddenly when we deploy the parachute.
+So slowing down the lander quickly and releasing the parachute (by turning Kh up in most cases) is also a solution.
+`Conclusion: These solutions sometimes seem to be contradictory, so striking a balance is a tricky work!`
+
+## Minimize descent time
+There is no doubt that we need to start the engine as late as possible. But what the engine can do is limited, we need to take care of Kh&Kp setting (sometimes turning up Kp is useful) in case that the lander touches the ground too hard even with full throttle.
+
+## Minimize peek acceleration
+This is basically contradictory to saving fuels. To minimize the peek acceleration, we need a more smooth descent. 
+By setting:
+```
+Kh = (Speed_When_Start_Descending) / (Total_Descent_height)
+```
+I can get a very smooth descent, with a almost linear velocity change.
+But in practice, linear descent takes too much time.
+It's possible to apply a non-linear reference for the velocity.
+For example, giving a non-linear reference:
+```
+reference_velocity = Kh * function(Height - Target_Height)
+```
+The function should be a curve with an **as small as possible** first derivative. (quadratic function successfully reduce the peek acceleration in my tests.)
+
+## Engine Lag & Delay
+Kp is essential to deal with engine lag & delay.
+According to my experiences, the major problem of engine lag & delay is bouncing. The engine reacts too late to error changes, which will sometimes cause the lander bouncing near the ground.
+It's very practical to use a lower Kp, which means the engine will not overshoot the error changes.
+Some successful trials:
+```
+#define ENGINE_LAG 0.5 // (s)
+#define ENGINE_DELAY 0.5 // (s)
+```
+In Scenario 1, reduce Kp from 0.5 to 0.2
+In Scenario 6, reduce Kp from 0.5 to 0.4
+
+
+
 
 
 # Copyright

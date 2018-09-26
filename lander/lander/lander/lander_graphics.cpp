@@ -1613,6 +1613,9 @@ void attitude_stabilization (void)
 void attitude_autochange (vector3d attitude)
 // control the attitude of the craft automatically by velocity.
 {
+    if (attitude.abs() == 0){
+        return;
+    }
     vector3d up, left, out;
     double m[16];
     
