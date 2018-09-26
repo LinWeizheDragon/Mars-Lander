@@ -193,7 +193,16 @@ Therefore when trying to land, if posible we can fly from east to west and when 
 ### Solution 3: Make use of parachute
 The drag force increases suddenly when we deploy the parachute.
 So slowing down the lander quickly and releasing the parachute (by turning Kh up in most cases) is also a solution.
-`Conclusion: These solutions sometimes seem to be contradictory, so striking a balance is a tricky work!`
+### Solution 4: Make use of gravitational force
+I use this concept almost in every scenario, which helps the lander start approaching the surface of the planet with a calculated velocity. Also, it works when you are trying to inject the lander to an orbit.
+Below is the codes to calculate the velocity we need to approach the lander to the Mars surface.
+```
+a  = (position.abs() + MARS_RADIUS) / 2.0;
+c = a - MARS_RADIUS;
+launch_velocity = sqrt((a-c)* GRAVITY * MARS_MASS / (a*(a+c)));
+```
+### Conclusion: 
+These solutions sometimes seem to be contradictory, so striking a balance is a tricky work!
 
 ## Minimize descent time
 There is no doubt that we need to start the engine as late as possible. But what the engine can do is limited, we need to take care of Kh&Kp setting (sometimes turning up Kp is useful) in case that the lander touches the ground too hard even with full throttle.
@@ -222,8 +231,8 @@ Some successful trials:
 #define ENGINE_LAG 0.5 // (s)
 #define ENGINE_DELAY 0.5 // (s)
 ```
-In Scenario 1, reduce Kp from 0.5 to 0.2
-In Scenario 6, reduce Kp from 0.5 to 0.4
+In Scenario 1, reduce Kp from 0.5 to 0.2.
+In Scenario 6, reduce Kp from 0.5 to 0.4.
 
 
 
