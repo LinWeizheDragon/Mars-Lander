@@ -240,3 +240,5 @@ In Scenario 6, reduce Kp from 0.5 to 0.4.
 
 # Copyright
 Lin Weizhe @2018
+Author: Lin Weizhe, Trinity College
+Department: Department of Engineering, University of Cambridge
